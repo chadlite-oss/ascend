@@ -1,0 +1,19 @@
+[package]
+name = "ascend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+drm = "0.14"
+drm-fourcc = "2.2"
+anyhow = "1.0"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.11"
+nix = { version = "0.29", features = ["poll", "event"] }
+gbm = "0.18.0"
+ash = "0.38.0"
+
+[[example]]
+name = "phase1_static"
+path = "examples/phase1_static.rs"

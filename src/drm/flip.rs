@@ -1,3 +1,5 @@
+//! Page-flip event waiting.
+
 use std::os::fd::AsFd;
 
 use anyhow::{Context, Result};

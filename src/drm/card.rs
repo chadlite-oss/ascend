@@ -1,3 +1,5 @@
+//! The DRM card device — our handle to the GPU's display subsystem.
+
 use std::fs::OpenOptions;
 use std::os::fd::{AsFd, BorrowedFd};
 
@@ -30,6 +32,7 @@ impl Card {
         Device::acquire_master_lock(self)
             .context("Failed to acquire DRM master lock (are you on a bare TTY?)")
     }
+
     pub fn release_master_lock(&self) -> Result<()> {
         Device::release_master_lock(self).context("Failed to release DRM master lock")
     }

@@ -1,5 +1,6 @@
 mod drm;
 mod event_loop;
+mod gbm;
 mod render;
 use anyhow::{Context, Result};
 
@@ -14,7 +15,7 @@ fn main() -> Result<()> {
     let output = Output::find_connected(&card)?;
     output.describe();
 
-    let mut renderer = CpuRenderer::new(card, output).contet("Failed to create CPU renderer")?;
+    let mut renderer = CpuRenderer::new(card, output).context("Failed to create CPU renderer")?;
 
     event_loop::run(&mut renderer)?;
     Ok(())

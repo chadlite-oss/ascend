@@ -58,7 +58,7 @@ impl Renderer for CpuRenderer {
         self.card
             .set_crtc(
                 self.output.crtc,
-                Some(self.buffer[0].fb),
+                Some(self.buffers[0].fb),
                 (0, 0),
                 &[self.output.connector],
                 Some(self.output.mode),
