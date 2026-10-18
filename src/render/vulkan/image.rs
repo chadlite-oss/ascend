@@ -24,8 +24,13 @@ impl VulkanImage {
             .size(0)
             .row_pitch(gbm_buffer.stride as u64);
 
+        let modifier_val = match gbm_buffer.modifier {
+            drm_fourcc::DrmModifier::Invalid => 0, // DRM_FORMAT_MOD_LINEAR
+            m => u64::from(m),
+        };
+
         let mut drm_modifier_info = vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
-            .drm_format_modifier(gbm_buffer.modifier.into())
+            .drm_format_modifier(modifier_val)
             .plane_layouts(std::slice::from_ref(&plane_layout));
 
         let mut external_memory_info = vk::ExternalMemoryImageCreateInfo::default()

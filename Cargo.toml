@@ -13,6 +13,8 @@ env_logger = "0.11"
 nix = { version = "0.29", features = ["poll", "event"] }
 gbm = "0.18.0"
 ash = "0.38.0"
+wayland-server = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["server"] }
 
 [[example]]
 name = "phase1_static"

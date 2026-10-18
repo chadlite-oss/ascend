@@ -4,7 +4,7 @@ mod cpu;
 pub mod vulkan;
 
 pub use cpu::CpuRenderer;
-pub use vulkan::VulkanContext;
+pub use vulkan::{VulkanContext, VulkanImage};
 
 use anyhow::Result;
 
