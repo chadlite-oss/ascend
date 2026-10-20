@@ -3,6 +3,8 @@ mod event_loop;
 mod gbm;
 mod render;
 
+mod wayland;
+
 use anyhow::Result;
 
 fn main() -> Result<()> {
@@ -17,8 +19,11 @@ fn main() -> Result<()> {
     println!("3. Initializing Vulkan renderer...");
     let mut renderer = render::vulkan::VulkanRenderer::new(card, output)?;
 
-    println!("4. Starting render loop...");
-    event_loop::run(&mut renderer)?;
+    println!("4. Initializing Wayland server...");
+    let mut wayland = wayland::WaylandServer::new()?;
+
+    println!("5. Starting render loop...");
+    event_loop::run(&mut renderer, &mut wayland)?;
 
     Ok(())
 }
