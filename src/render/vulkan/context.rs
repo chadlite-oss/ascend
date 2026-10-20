@@ -132,6 +132,84 @@ impl VulkanContext {
     pub fn wait_idle(&self) -> Result<()> {
         unsafe { self.device.device_wait_idle() }.context("Failed to wait for device idle")
     }
+
+    pub fn find_memory_type(
+        &self,
+        type_filter: u32,
+        properties: vk::MemoryPropertyFlags,
+    ) -> Option<u32> {
+        let mem_props = unsafe {
+            self.instance
+                .get_physical_device_memory_properties(self.physical_device)
+        };
+
+        for i in 0..mem_props.memory_type_count {
+            if (type_filter & (1 << i)) != 0
+                && mem_props.memory_types[i as usize]
+                    .property_flags
+                    .contains(properties)
+            {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    pub fn create_buffer(
+        &self,
+        size: vk::DeviceSize,
+        usage: vk::BufferUsageFlags,
+        properties: vk::MemoryPropertyFlags,
+    ) -> Result<(vk::Buffer, vk::DeviceMemory)> {
+        let buffer_info = vk::BufferCreateInfo::default()
+            .size(size)
+            .usage(usage)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let buffer = unsafe { self.device.create_buffer(&buffer_info, None) }
+            .context("Failed to create Vulkan buffer")?;
+
+        let mem_reqs = unsafe { self.device.get_buffer_memory_requirements(buffer) };
+
+        let memory_type_index = self
+            .find_memory_type(mem_reqs.memory_type_bits, properties)
+            .ok_or_else(|| anyhow!("Failed to find suitable memory type for buffer"))?;
+
+        let alloc_info = vk::MemoryAllocateInfo::default()
+            .allocation_size(mem_reqs.size)
+            .memory_type_index(memory_type_index);
+
+        let memory = unsafe { self.device.allocate_memory(&alloc_info, None) }
+            .context("Failed to allocate buffer memory")?;
+
+        unsafe { self.device.bind_buffer_memory(buffer, memory, 0) }
+            .context("Failed to bind buffer memory")?;
+
+        Ok((buffer, memory))
+    }
+
+    pub fn write_to_memory(&self, memory: vk::DeviceMemory, data: &[u8]) -> Result<()> {
+        self.write_to_memory_offset(memory, 0, data)
+    }
+
+    pub fn write_to_memory_offset(
+        &self,
+        memory: vk::DeviceMemory,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<()> {
+        unsafe {
+            let ptr = self.device.map_memory(
+                memory,
+                offset,
+                data.len() as u64,
+                vk::MemoryMapFlags::empty(),
+            )?;
+
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr as *mut u8, data.len());
+            self.device.unmap_memory(memory);
+        }
+        Ok(())
+    }
 }
 
 impl Drop for VulkanContext {

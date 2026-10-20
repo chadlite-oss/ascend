@@ -69,7 +69,12 @@ impl Renderer for CpuRenderer {
         Ok(())
     }
 
-    fn render(&mut self, frame: u64) -> Result<()> {
+    fn render(
+        &mut self,
+        frame: u64,
+        _windows: &[crate::render::WindowSurface],
+        _cursor: Option<(i32, i32)>,
+    ) -> Result<()> {
         let back = self.back;
         self.draw_gradient(back, frame)
     }

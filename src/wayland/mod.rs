@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use wayland_server::{
     Client, DataInit, Dispatch, Display, DisplayHandle, GlobalDispatch, ListeningSocket, New,
+    Resource, WEnum,
     backend::ClientData,
     protocol::{
         wl_buffer::{self, WlBuffer},
@@ -26,11 +27,15 @@ impl ClientData for AscendClientData {
     }
 }
 
-pub struct ServerState {}
+pub struct ServerState {
+    pub surface: Vec<SurfaceData>,
+}
 
 impl ServerState {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            surface: Vec::new(),
+        }
     }
 }
 
@@ -73,9 +78,9 @@ impl Dispatch<WlCompositor, ()> for ServerState {
 
 impl Dispatch<WlSurface, ()> for ServerState {
     fn request(
-        _state: &mut Self,
+        state: &mut Self,
         _client: &Client,
-        _resource: &WlSurface,
+        resource: &WlSurface,
         request: wl_surface::Request,
         _data: &(),
         _dhandle: &DisplayHandle,
@@ -87,9 +92,46 @@ impl Dispatch<WlSurface, ()> for ServerState {
                     "Wayland Client: Attached buffer {:?} at ({},{})",
                     buffer, x, y
                 );
+
+                let (width, height) = if let Some(buf) = &buffer {
+                    if let Some(buf_data) = buf.data::<ShmBufferData>() {
+                        println!(
+                            "   -> Extracted SHM pixel buffer! Dimensions: {}x{}, Stride: {}, Raw bytes: {}",
+                            buf_data.width,
+                            buf_data.height,
+                            buf_data.stride,
+                            buf_data.pixel_data().len()
+                        );
+                        (buf_data.width, buf_data.height)
+                    } else {
+                        (0, 0)
+                    }
+                } else {
+                    (0, 0)
+                };
+
+                if let Some(surf) = state.surface.iter_mut().find(|s| &s.surface == resource) {
+                    surf.buffer = buffer;
+                    surf.x = x;
+                    surf.y = y;
+                    surf.width = width;
+                    surf.height = height;
+                } else {
+                    state.surface.push(SurfaceData {
+                        surface: resource.clone(),
+                        buffer,
+                        x,
+                        y,
+                        width,
+                        height,
+                    });
+                }
             }
             wl_surface::Request::Commit => {
-                println!("Wayland Client: Committed surface!");
+                println!(
+                    "Wayland Client: Committed surface! Total surfaces: {}",
+                    state.surface.len()
+                );
             }
             _ => {}
         }
@@ -108,6 +150,36 @@ impl Dispatch<WlRegion, ()> for ServerState {
     ) {
     }
 }
+
+// ============================================================================
+// Shared Memory (SHM) Pool and Buffer storage
+// ============================================================================
+
+pub struct ShmPool {
+    pub mmap: memmap2::Mmap,
+}
+
+#[derive(Clone)]
+pub struct ShmBufferData {
+    pub pool: Arc<ShmPool>,
+    pub offset: usize,
+    pub width: i32,
+    pub height: i32,
+    pub stride: i32,
+    pub format: WEnum<wl_shm::Format>,
+}
+
+impl ShmBufferData {
+    pub fn pixel_data(&self) -> &[u8] {
+        let start = self.offset;
+        let len = (self.stride * self.height) as usize;
+        &self.pool.mmap[start..start + len]
+    }
+}
+
+// ============================================================================
+// wl_shm implementation (Shared Memory)
+// ============================================================================
 
 impl GlobalDispatch<WlShm, ()> for ServerState {
     fn bind(
@@ -136,53 +208,69 @@ impl Dispatch<WlShm, ()> for ServerState {
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            wl_shm::Request::CreatePool { id, fd: _, size } => {
+            wl_shm::Request::CreatePool { id, fd, size } => {
                 println!("Wayland Client: Created SHM pool with size {} bytes", size);
 
-                data_init.init(id, ());
+                match unsafe { memmap2::MmapOptions::new().len(size as usize).map(&fd) } {
+                    Ok(mmap) => {
+                        let pool = Arc::new(ShmPool { mmap });
+                        data_init.init(id, pool);
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to mmap SHM pool: {}", err);
+                    }
+                }
             }
             _ => {}
         }
     }
 }
 
-impl Dispatch<WlShmPool, ()> for ServerState {
+impl Dispatch<WlShmPool, Arc<ShmPool>> for ServerState {
     fn request(
         _state: &mut Self,
         _client: &Client,
         _resource: &WlShmPool,
         request: wl_shm_pool::Request,
-        _data: &(),
+        data: &Arc<ShmPool>,
         _dhandle: &DisplayHandle,
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
             wl_shm_pool::Request::CreateBuffer {
                 id,
-                offset: _,
+                offset,
                 width,
                 height,
                 stride,
                 format,
             } => {
                 println!(
-                    "Wayland Client: Created buffer {}x{},stride : {} , format:{:?}",
+                    "Wayland Client: Created buffer {}x{}, stride: {}, format: {:?}",
                     width, height, stride, format
                 );
-                data_init.init(id, ());
+                let buffer_data = ShmBufferData {
+                    pool: data.clone(),
+                    offset: offset as usize,
+                    width,
+                    height,
+                    stride,
+                    format,
+                };
+                data_init.init(id, buffer_data);
             }
             _ => {}
         }
     }
 }
 
-impl Dispatch<WlBuffer, ()> for ServerState {
+impl Dispatch<WlBuffer, ShmBufferData> for ServerState {
     fn request(
         _state: &mut Self,
         _client: &Client,
         _resource: &WlBuffer,
         _request: wl_buffer::Request,
-        _data: &(),
+        _data: &ShmBufferData,
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, Self>,
     ) {
@@ -197,6 +285,7 @@ pub struct WaylandServer {
 }
 
 pub struct SurfaceData {
+    pub surface: WlSurface,
     pub buffer: Option<WlBuffer>,
     pub x: i32,
     pub y: i32,
