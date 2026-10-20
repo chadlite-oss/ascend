@@ -73,7 +73,7 @@ impl InputManager {
                 }
 
                 Event::Pointer(PointerEvent::Button(b)) => {
-                    println!(
+                    log_info!(
                         "Mouse button {:?} state: {:?}",
                         b.button(),
                         b.button_state()
@@ -81,7 +81,7 @@ impl InputManager {
                 }
 
                 Event::Keyboard(KeyboardEvent::Key(k)) => {
-                    println!("Key: {:?} state: {:?}", k.key(), k.key_state());
+                    log_info!("Key: {:?} state: {:?}", k.key(), k.key_state());
                 }
 
                 _ => {}

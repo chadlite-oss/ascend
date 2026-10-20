@@ -11,15 +11,15 @@ pub fn run(
     wayland: &mut WaylandServer,
     input: &mut crate::input::InputManager,
 ) -> Result<()> {
-    println!("Setting mode...");
+    log_info!("Setting mode...");
     renderer.modeset()?;
 
-    println!(
+    log_info!(
         "Ascend compositor running! Wayland socket: {:?}",
         wayland.socket_name
     );
-    println!("Press Ctrl+C to stop.");
-    println!();
+    log_info!("Press Ctrl+C to stop.");
+    log_info!("");
 
     let mut frame: u64 = 0;
     loop {
@@ -50,8 +50,14 @@ pub fn run(
         renderer.render(frame, &windows, cursor)?;
         renderer.flip()?;
 
-        if frame % 288 == 0 {
-            println!("frame {}", frame);
+        if frame % 120 == 0 {
+            log_info!(
+                "frame {}: cursor=({:.1}, {:.1}), active windows={}",
+                frame,
+                input.cursor_x,
+                input.cursor_y,
+                windows.len()
+            );
         }
 
         frame += 1;

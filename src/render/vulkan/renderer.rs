@@ -3,7 +3,7 @@ use ash::vk;
 use drm::control::{Device as ControlDevice, PageFlipFlags, framebuffer};
 
 use super::{VulkanContext, VulkanImage};
-use crate::drm::{Card, Output, wait_for_event};
+use crate::drm::{Card, DrmCursor, Output, wait_for_event};
 use crate::gbm::{GbmBuffer, GbmDevice};
 use crate::render::{Renderer, WindowSurface};
 
@@ -25,6 +25,7 @@ pub struct VulkanRenderer {
     staging_buffer: vk::Buffer,
     staging_memory: vk::DeviceMemory,
     staging_capacity: usize,
+    cursor: DrmCursor,
 }
 
 impl VulkanRenderer {
@@ -62,13 +63,16 @@ impl VulkanRenderer {
         let fence = unsafe { context.device.create_fence(&fence_info, None) }
             .context("Failed to create Vulkan fence")?;
 
-        // Allocate a staging buffer large enough to hold a full screen of RGBA pixels
+        // Allocate a staging buffer large enough to hold client window RGBA pixels
         let staging_capacity = (width * height * 4) as usize;
         let (staging_buffer, staging_memory) = context.create_buffer(
             staging_capacity as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
+
+        // Dedicated DRM/KMS hardware cursor plane with zero software copy overhead
+        let cursor = DrmCursor::new(&card, output.crtc)?;
 
         Ok(Self {
             card,
@@ -82,6 +86,7 @@ impl VulkanRenderer {
             staging_buffer,
             staging_memory,
             staging_capacity,
+            cursor,
         })
     }
 
@@ -90,7 +95,6 @@ impl VulkanRenderer {
         idx: usize,
         frame: u64,
         windows: &[WindowSurface],
-        cursor: Option<(i32, i32)>,
     ) -> Result<()> {
         let cmd = self.cmd_buffers[idx];
         let image = self.buffers[idx].vulkan_image.image;
@@ -133,8 +137,8 @@ impl VulkanRenderer {
                 &[to_transfer_barrier],
             );
 
-            // 1. Clear background with animated color gradient
-            let t = frame as f32 * 0.03;
+            // 1. Clear background with vibrant animated color gradient
+            let t = frame as f32 * 0.02;
             let r = (t.sin() * 0.5 + 0.5).clamp(0.0, 1.0);
             let g = ((t + 2.0).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
             let b = ((t + 4.0).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
@@ -219,88 +223,7 @@ impl VulkanRenderer {
                 }
             }
 
-            // 3. Draw cursor on top
-            if let Some((cx, cy)) = cursor {
-                const CURSOR_SIZE: u32 = 16;
-                let mut cursor_pixels = [255u8; (CURSOR_SIZE * CURSOR_SIZE * 4) as usize];
-                for y in 0..CURSOR_SIZE {
-                    for x in 0..CURSOR_SIZE {
-                        let idx = ((y * CURSOR_SIZE + x) * 4) as usize;
-                        let is_border =
-                            x == 0 || y == 0 || x == CURSOR_SIZE - 1 || y == CURSOR_SIZE - 1;
-                        let is_cross = (x == CURSOR_SIZE / 2) || (y == CURSOR_SIZE / 2);
-                        if is_border || is_cross {
-                            cursor_pixels[idx] = 255;
-                            cursor_pixels[idx + 1] = 255;
-                            cursor_pixels[idx + 2] = 255;
-                            cursor_pixels[idx + 3] = 255;
-                        } else {
-                            cursor_pixels[idx] = 255;
-                            cursor_pixels[idx + 1] = 40;
-                            cursor_pixels[idx + 2] = 40;
-                            cursor_pixels[idx + 3] = 255;
-                        }
-                    }
-                }
-
-                let cursor_bytes = (CURSOR_SIZE * CURSOR_SIZE * 4) as usize;
-                if staging_offset + cursor_bytes <= self.staging_capacity {
-                    self.context.write_to_memory_offset(
-                        self.staging_memory,
-                        staging_offset as u64,
-                        &cursor_pixels,
-                    )?;
-
-                    let cursor_barrier = vk::ImageMemoryBarrier::default()
-                        .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                        .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                        .image(image)
-                        .subresource_range(subresource_range);
-
-                    device.cmd_pipeline_barrier(
-                        cmd,
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::DependencyFlags::empty(),
-                        &[],
-                        &[],
-                        &[cursor_barrier],
-                    );
-
-                    let copy_region = vk::BufferImageCopy::default()
-                        .buffer_offset(staging_offset as u64)
-                        .buffer_row_length(CURSOR_SIZE)
-                        .buffer_image_height(CURSOR_SIZE)
-                        .image_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            mip_level: 0,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .image_offset(vk::Offset3D {
-                            x: cx.clamp(0, (self.output.width.saturating_sub(CURSOR_SIZE)) as i32),
-                            y: cy.clamp(0, (self.output.height.saturating_sub(CURSOR_SIZE)) as i32),
-                            z: 0,
-                        })
-                        .image_extent(vk::Extent3D {
-                            width: CURSOR_SIZE,
-                            height: CURSOR_SIZE,
-                            depth: 1,
-                        });
-
-                    device.cmd_copy_buffer_to_image(
-                        cmd,
-                        self.staging_buffer,
-                        image,
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        &[copy_region],
-                    );
-                }
-            }
-
-            // 4. Transition to general layout for monitor scanout
+            // 3. Transition to general layout for monitor scanout
             let to_scanout_barrier = vk::ImageMemoryBarrier::default()
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::GENERAL)
@@ -331,7 +254,7 @@ impl VulkanRenderer {
 
 impl Renderer for VulkanRenderer {
     fn modeset(&mut self) -> Result<()> {
-        self.record_and_submit(0, 0, &[], None)?;
+        self.record_and_submit(0, 0, &[])?;
 
         unsafe {
             self.context
@@ -349,6 +272,9 @@ impl Renderer for VulkanRenderer {
             )
             .context("set_crtc failed")?;
 
+        // Attach hardware cursor to CRTC
+        let _ = self.cursor.show(&self.card);
+
         self.back = 1;
         Ok(())
     }
@@ -359,8 +285,13 @@ impl Renderer for VulkanRenderer {
         windows: &[WindowSurface],
         cursor: Option<(i32, i32)>,
     ) -> Result<()> {
+        // Move hardware cursor plane smoothly in hardware
+        if let Some((cx, cy)) = cursor {
+            let _ = self.cursor.move_to(&self.card, cx, cy);
+        }
+
         let back = self.back;
-        self.record_and_submit(back, frame, windows, cursor)
+        self.record_and_submit(back, frame, windows)
     }
 
     fn flip(&mut self) -> Result<()> {
@@ -389,6 +320,7 @@ impl Renderer for VulkanRenderer {
 
 impl Drop for VulkanRenderer {
     fn drop(&mut self) {
+        let _ = self.cursor.hide(&self.card);
         unsafe {
             let _ = self.context.device.device_wait_idle();
             self.context
