@@ -20,7 +20,7 @@
 
 
 ![picture just color full image for now](examples/photo_2026-10-21_00-20-39.jpg)
-
+![see the video](examples/demo3.gif)
 ---
 
 ## Roadmap
