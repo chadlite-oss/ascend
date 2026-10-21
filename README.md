@@ -19,7 +19,7 @@
 ### 5. Robust Logging Subsystem 
 
 
-demo[[]]
+!demo[[photo_2026-10-21_00-20-39.jpg]]
 ---
 
 ## Roadmap
