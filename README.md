@@ -111,4 +111,4 @@ Because Ascend directly accesses `/dev/dri/card*` and acquires the DRM master lo
 cargo run --release
 ```
 
-4. To stop the compositor, press **`Ctrl + C`**. All logs will be saved to `console.txt`.
+4. To stop the compositor, press ctrl + c
