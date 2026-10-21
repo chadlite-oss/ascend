@@ -19,7 +19,7 @@
 ### 5. Robust Logging Subsystem 
 
 
-![picture just color full image for now](photo_2026-10-21_00-20-39.jpg)
+![picture just color full image for now](examples/photo_2026-10-21_00-20-39.jpg)
 
 ---
 
