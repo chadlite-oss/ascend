@@ -37,18 +37,19 @@ artiacuture
 
 ## Core Features
 
-### 1. Direct DRM/KMS Modesetting ([`src/drm`](src/drm))
+### 1. Direct DRM/KMS Modesetting
 
 
-### 2. Zero-Copy Vulkan Scanout Engine ([`src/render/vulkan`](src/render/vulkan))
-.
-
-### 3. Native Input Management ([`src/input`](src/input))
-
-### 4. Wayland Protocol Server ([`src/wayland`](src/wayland))
+### 2. Zero-Copy Vulkan Scanout Engine
 
 
-### 5. Robust Logging Subsystem ([`src/logger.rs`](src/logger.rs))
+### 3. Native Input Management 
+
+
+### 4. Wayland Protocol Server 
+
+
+### 5. Robust Logging Subsystem 
 
 
 demo[[]]
