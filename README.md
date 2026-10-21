@@ -2,39 +2,6 @@
 
  A wayland compositor that made in rust very simple
 
----
-
-## Architecture Overview
-
-artiacuture
-
-```
-+-------------------------------------------------------------+
-|                     Ascend Event Loop                       |
-+-------------+---------------------+-------------------------+
-|             |                     |                         |
-|   Wayland   |      libinput       |     Vulkan Renderer     |
-|   Server    |      Manager        |     & GBM Pipeline      |
-| (wl_shm,    | (relative/absolute  | (DMA-BUF zero-copy      |
-|  surfaces)  |  motion, buttons)   |  compositor scanout)    |
-|             |                     |                         |
-+------+------+----------+----------+------------+------------+
-       |                 |                       |
-       |                 |            +----------v----------+
-       |                 |            |  DRM Hardware Plane |
-       |                 |            |  & CRTC Modesetting |
-       v                 v            | (Hardware Cursor +  |
-+-----------------------------------+ |  Primary Scanout)   |
-|   Linux Kernel Subsystems         | +----------+----------+
-|   (KMS, DRM, evdev, udev, uapi)   |            |
-+-----------------------------------+------------v----------+
-                                    |     Display Output    |
-                                    |     (e.g. 2560x1440)  |
-                                    +-----------------------+
-```
-
----
-
 ## Core Features
 
 ### 1. Direct DRM/KMS Modesetting
