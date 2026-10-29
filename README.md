@@ -1,3 +1,7 @@
+## AI Declaration
+
+AI tools were used to assist with parts of the development process .
+
 # Ascend
 
  A wayland compositor that made in rust very simple
